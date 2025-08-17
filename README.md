@@ -24,7 +24,7 @@ This is useful when you have separate helper entities that calculate averages fr
 
 ## 📁 File Location
 
-Blueprint file: `blueprints/automation/krz/mqtt_air_multisensor.yaml`
+Blueprint file: `blueprints/automation/krzkraw/mqtt_air_multisensor.yaml`
 
 Place it under your Home Assistant `config/` blueprint path (keep folder structure or any folder you prefer under `blueprints/automation/`).
 
