@@ -221,14 +221,14 @@ action:
         sequence: []
     default: []
   - variables:
-      pm25_state: "{{ states(pm25_entity) }}"
+      pm25_state_raw: "{{ states(pm25_entity) }}"
+      pm25_state: "{{ (pm25_state_raw | float(0)) }}"
       pm25_uom: "{{ state_attr(pm25_entity,'unit_of_measurement') or 'µg/m³' }}"
       aqi_value: >
         {% set pm = pm25_state | float(0) %}
         {% if pm <= 0 %}0
         {% else %}{{ (pm | round(0)) | int }}
         {% endif %}
-      aqi_uom: "AQI"
   - service: mqtt.publish
     data:
       topic: "{{ state_topic }}"
@@ -239,7 +239,6 @@ action:
           'pm25': (pm25_state | float(default=0)),
           'aqi': (aqi_value | int),
           'pm25_uom': pm25_uom,
-          'aqi_uom': aqi_uom,
           'device': final_device_name,
           'ts': (now().timestamp() | int)
         } | tojson }}
@@ -283,7 +282,6 @@ action:
             {{ {
               'name': aqi_entity_name,
               'state_topic': state_topic,
-              'unit_of_measurement': aqi_uom,
               'value_template': '{{ value_json.aqi | int }}',
               'device_class': 'aqi',
               'unique_id': aqi_uid,
