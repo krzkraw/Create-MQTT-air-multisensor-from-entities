@@ -1,0 +1,301 @@
+blueprint:
+  name: MQTT air quality multisensor
+  description: >
+    Creates a MQTT air multisensor from selected PM2.5 and Air Quality Index (AQI) entities.
+    This blueprint will create a single device with two sensor entities and automation to publish their values.
+    It aims to have sane defaults - just type in suggested area and select your sensor entities!
+    Or skip using area and name the device as you wish.
+  domain: automation
+  input:
+    # --- Location / area ---
+    suggested_area:
+      name: Suggested area
+      description: >
+        Optional, suggested, area/room for the device (e.g., Living Room).
+        It will be appended to the default device name.
+        Leave empty to skip.
+      default: ""
+      selector:
+        text:
+          multiline: false
+    auto_detect_area:
+      name: Auto detect area
+      description: If enabled and Suggested area empty, derive area from first available source entity.
+      default: true
+      selector:
+        boolean: {}
+    # --- Source sensor entities ---
+    pm25_entity:
+      name: PM2.5 entity
+      selector:
+        entity:
+          domain: sensor
+          device_class: pm25
+      # --- Entity naming/translation ---
+    naming:
+      name: Entity naming/translation
+      icon: mdi:cog-outline
+      description: Set names for created entities.
+      input:
+        pm25_name:
+          name: Created PM2.5 entity's name
+          default: "PM2.5"
+          selector:
+            text:
+              multiline: false
+        aqi_name:
+          name: Created AQI entity's name
+          default: "Air Quality Index"
+          selector:
+            text:
+              multiline: false
+    # --- Device identification ---
+    device:
+      name: Device name & model
+      icon: mdi:cog-outline
+      description: Optionally override generated device name and model.
+      input:
+        device_identifier:
+          name: Device name
+          description: Logical device name (shown under Devices in Home Assistant).
+          default: "Air quality multisensor"
+        append_area:
+          name: Appended area
+          description: Add area to device name after -.
+          default: true
+          selector:
+            boolean: {}
+        device_model:
+          name: Device model
+          description: Model reported in MQTT Discovery device info.
+          default: "KRZ's air quality multisensor"
+    # --- Precision settings ---
+    precision:
+      name: Precision settings for sensors
+      icon: mdi:decimal-comma
+      description: >
+        Set precision settings for each sensor.
+      input:
+        pm25_precision:
+          name: PM2.5 precision (decimals)
+          description: Number of decimal places for PM2.5.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 3
+              step: 1
+        aqi_precision:
+          name: AQI precision (decimals)
+          description: Number of decimal places for AQI.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 3
+              step: 1
+    # --- Timing & behaviour ---
+    updates:
+      name: Updates & behaviour
+      description: >
+        Configure how the sensor updates its state.
+      icon: mdi:update
+      input:
+        trigger_interval:
+          name: Publish interval (seconds)
+          description: How often to publish current values if no state changes occur.
+          default: 3600
+          selector:
+            number:
+              min: 10
+              max: 7200
+              step: 10
+              unit_of_measurement: seconds
+        publish_on_state_change:
+          name: Publish on state change
+          description: Also publish immediately whenever any selected entity changes.
+          default: true
+          selector:
+            boolean: {}
+    # --- MQTT options ---
+    mqtt:
+      name: MQTT options
+      description: >
+        Configure MQTT settings for the sensor.
+      icon: mdi:cloud-cog-outline
+      input:
+        qos:
+          name: QoS
+          description: MQTT publish QoS level.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 2
+              mode: slider
+              step: 1
+        retain:
+          name: Retain
+          description: Whether the last received MQTT status message should be retained - sensors will show the last known value.
+          default: true
+          selector:
+            boolean: {}
+        base_topic:
+          name: Base MQTT topic
+          description: >
+            Leave empty to generate using device name.
+            Base topic for publishing data (default would be: homeassistant/sensor/air_multisensor_suggested_area).
+            State will be sent to <base_topic>/state.
+          default: ""
+        discovery_prefix:
+          name: MQTT Discovery prefix
+          description: Prefix for HA MQTT Discovery (usually homeassistant). Leave empty to skip creating discovery entities.
+          default: homeassistant
+        unique_id_prefix:
+          name: unique_id prefix
+          description: Prefix used to build unique_id values (must be unique). Leave empty to derive from the device name.
+          default: ""
+
+mode: queued
+max: 3
+max_exceeded: silent
+
+variables:
+  raw_device_name: !input device_identifier
+  device_model: !input device_model
+  base_topic: !input base_topic
+  pm25_entity: !input pm25_entity
+  pm25_name: !input pm25_name
+  aqi_name: !input aqi_name
+  qos: !input qos
+  retain: !input retain
+  discovery_prefix: !input discovery_prefix
+  unique_id_prefix: !input unique_id_prefix
+  trigger_interval: !input trigger_interval
+  publish_on_state_change: !input publish_on_state_change
+  pm25_precision: !input pm25_precision
+  aqi_precision: !input aqi_precision
+  suggested_area_input: !input suggested_area
+  auto_detect_area: !input auto_detect_area
+  append_area: !input append_area
+  # Automatically derive area from entities if user did not supply one.
+  derived_area: >
+    {{ area_name(pm25_entity) or '' }}
+  suggested_area: >
+    {{ suggested_area_input if suggested_area_input|length>0 else (derived_area if auto_detect_area else '') }}
+  # Final device name (append area only if default name and area present)
+  final_device_name: >
+    {{ (raw_device_name ~ ' - ' ~ suggested_area) if (suggested_area|length > 0 and append_area) else raw_device_name }}
+  # Computed sensor entity names (device name + optional custom override part or default suffix)
+  pm25_entity_name: >
+    {{ (pm25_name) if pm25_name|length>0 else ('PM2.5') }}
+  aqi_entity_name: >
+    {{ (aqi_name) if aqi_name|length>0 else ('Air Quality Index') }}
+  norm_device_name: "{{ final_device_name | lower | regex_replace('[^a-z0-9]+','_') }}"
+  uid_prefix: "{{ (unique_id_prefix if unique_id_prefix|length>0 else norm_device_name) }}"
+  default_topic: "homeassistant/sensor/{{ norm_device_name }}"
+  topic: "{{ (base_topic if base_topic|length>0 else default_topic) }}"
+  state_topic: "{{ topic }}/state"
+  pm25_uid: "{{ uid_prefix }}_pm25"
+  aqi_uid: "{{ uid_prefix }}_aqi"
+
+trigger:
+  - platform: homeassistant
+    event: start
+  - platform: event
+    event_type: mqtt_discovery_retain_refresh  # manual custom event to republish discovery payloads if needed
+  - platform: state
+    entity_id: !input pm25_entity
+    id: change
+    enabled: true
+
+condition: []
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ (trigger.id == 'change' and not publish_on_state_change) or
+                 (trigger.id == 'tick' and ((now().timestamp() | int) % (trigger_interval | int) != 0)) }}
+        sequence: []
+    default: []
+  - variables:
+      pm25_state: "{{ states(pm25_entity) }}"
+      pm25_uom: "{{ state_attr(pm25_entity,'unit_of_measurement') or 'µg/m³' }}"
+      # CAQI (EU) calculation based on PM2.5 (0-100 scale, linear, >100=100)
+      aqi_value: >
+        {% set pm = pm25_state | float(0) %}
+        {% if pm <= 0 %}0
+        {% elif pm >= 100 %}100
+        {% else %}{{ (pm | round(0)) | int }}
+        {% endif %}
+  aqi_uom: "CAQI (EU)"
+  - service: mqtt.publish
+    data:
+      topic: "{{ state_topic }}"
+      qos: "{{ qos | int }}"
+      retain: "{{ retain }}"
+      payload: >
+        {{ {
+          'pm25': (pm25_state | float(default=0)),
+          'aqi': (aqi_value | int),
+          'pm25_uom': pm25_uom,
+          'aqi_uom': aqi_uom,
+          'device': final_device_name,
+          'ts': (now().timestamp() | int)
+        } | tojson }}
+
+  - if: "{{ discovery_prefix | length > 0 }}"
+    then:
+      - variables:
+          device_obj: >
+            {{ {
+              'identifiers':[uid_prefix],
+              'name': final_device_name,
+              'model': device_model,
+              'manufacturer': 'KRZ',
+              'sw_version': '1.0'
+            } }}
+      - service: mqtt.publish
+        data:
+          topic: "{{ discovery_prefix }}/sensor/{{ uid_prefix }}/pm25/config"
+          retain: true
+          qos: 0
+          payload: >
+            {{ {
+              'name': pm25_entity_name,
+              'state_topic': state_topic,
+              'unit_of_measurement': pm25_uom,
+              'value_template': '{{ value_json.pm25 | round(' ~ (pm25_precision | int) ~ ') }}',
+              'device_class': 'pm25',
+              'unique_id': pm25_uid,
+              'device': device_obj,
+              'suggested_display_precision': pm25_precision,
+              'state_class': 'measurement',
+              'suggested_area': suggested_area,
+              'expire_after': trigger_interval * 2
+            } | tojson }}
+      - service: mqtt.publish
+        data:
+          topic: "{{ discovery_prefix }}/sensor/{{ uid_prefix }}/aqi/config"
+          retain: true
+          qos: 0
+          payload: >
+            {{ {
+              'name': aqi_entity_name,
+              'state_topic': state_topic,
+              'unit_of_measurement': aqi_uom,
+              'value_template': '{{ value_json.aqi | int }}',
+              'device_class': 'aqi',
+              'unique_id': aqi_uid,
+              'device': device_obj,
+              'suggested_display_precision': 0,
+              'state_class': 'measurement',
+              'suggested_area': suggested_area,
+              'expire_after': trigger_interval * 2
+            } | tojson }}
+
+      # Availability (optional) can be added similarly if desired.
+
+alias: MQTT air quality multisensor (Blueprint Instance)
