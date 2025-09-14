@@ -223,14 +223,12 @@ action:
   - variables:
       pm25_state: "{{ states(pm25_entity) }}"
       pm25_uom: "{{ state_attr(pm25_entity,'unit_of_measurement') or 'µg/m³' }}"
-      # CAQI (EU) calculation based on PM2.5 (0-100 scale, linear, >100=100)
       aqi_value: >
         {% set pm = pm25_state | float(0) %}
         {% if pm <= 0 %}0
-        {% elif pm >= 100 %}100
         {% else %}{{ (pm | round(0)) | int }}
         {% endif %}
-  aqi_uom: "CAQI (EU)"
+      aqi_uom: "AQI"
   - service: mqtt.publish
     data:
       topic: "{{ state_topic }}"
